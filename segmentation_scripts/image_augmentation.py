@@ -31,7 +31,6 @@ class image_augmentation:
         the order is the order of interpolation, range form 0-5, based on skimage.transform.wrap
         the returned image will be same size as input because of reshape = False, didn't provide as param in func
         '''
-        #print('in rotate')
         if random.randint(0,100)<execute_prob*100:
             rotate_angle = random.randint(0,angle_spectrum*2)-angle_spectrum
             #print(rotate_angle)
@@ -65,18 +64,27 @@ class image_augmentation:
             self.img_arr = map_coordinates(self.img_arr, indices, order=spline_order, mode='reflect')
 
 
-    def RandomContrast(self, gamma = [0.5,1.7], execute_prob = 0.5):
+    def RandomContrast(self, gain = [0.9,1.1], execute_prob = 0):
         '''
+        Gave up, both log and gamma don't work for med img, especially after windowing
         change the contrast of image by gamma transform
         detail: skimage.exposure.adjust_gamma()
         the default random gamma ranges (0.5,1.7), checked visually
         '''
-        #print('in contrast')
+        print('in contrast')
         if random.randint(0,100)<execute_prob*100:
-            gamma = random.uniform(gamma[0],gamma[1])
-            self.img_arr = exposure.adjust_gamma(self.img_arr,gamma)
+            # gamma = random.uniform(gamma[0],gamma[1])
+            gain = 0.75
+            self.img_arr = exposure.adjust_log(self.img_arr,gain)
 
-    def additiveGaussianNoise(self, scale_range = [0.0,1.0], execute_prob = 0.2):
+
+    def EqualHist(self,execute_prob = 0.1):
+        if random.randint(0,100)<execute_prob*100:
+            self.img_arr = exposure.equalize_hist(self.img_arr)
+
+
+
+    def additiveGaussianNoise(self, scale_range = [0.0,0.04], execute_prob = 0.1):
         '''
         additive Gaussian noise to the image
 
@@ -90,15 +98,14 @@ class image_augmentation:
             gaussian_noise = np.random.normal(0.0,scale=scale,size=shape)
             self.img_arr = self.img_arr+gaussian_noise
 
-    def GaussianBlur(self,sigma_range = [0.0,1.0],mode = 'nearest',execute_prob = 0.8):
+    def GaussianBlur(self,sigma_range = [0.0,0.25],mode = 'nearest',execute_prob = 0.5):
         '''
         Gaussian blur to the image
 
         param: 
-        the sigma of gaussian filter, detail on skimage.filter.gaussian
+        the sigma of gaussian filter, detail on skimage.filter.gaussian, maxi can be 0.25
         mode: [reflect, constant, nearest, mirror, wrap]
         '''
-        #print('in gaussianblur')
         if random.randint(0,100)<execute_prob*100:
             sigma = random.uniform(sigma_range[0],sigma_range[1])
             self.img_arr = gaussian(self.img_arr,sigma,mode = mode)
@@ -124,6 +131,8 @@ class image_augmentation:
                 self.additiveGaussianNoise()
             elif augmentation == 'GaussianBlur':
                 self.GaussianBlur()
+            elif augmentation == 'EqualHist':
+                self.EqualHist()
             else:
                 self.default()
         return self.img_arr, self.label_arr

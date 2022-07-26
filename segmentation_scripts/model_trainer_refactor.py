@@ -1,5 +1,4 @@
 
-
 import torch
 from Unet_model import Vnet
 from image_loader import ImageLoadPipe
@@ -23,15 +22,19 @@ class TrainBuilder():
         self.result_savepath = paths['result']
         self.model_SavePath = paths['model']
         self.dataloader = DataLoader(ImageLoadPipe(scan_path=paths['train_scan'],
-                                                   scan_list = os.listdir(paths['train_scan'])[0:1],
+                                                   scan_list = os.listdir(paths['train_scan']),
                                                    mask_path=paths['train_label'],
+                                                   slice_num = 64,
                                                    if_transform=True,
-                                                   augmentation_list=['rotate','contrast',
-                                                                      'gaussianNoise','GaussianBlur']),
+                                                   augmentation_list=['rotate',
+                                                                      'GaussianBlur',
+                                                                      'EqualHist',
+                                                                      'gaussianNoise']),
                                      batch_size = 1, shuffle = True)
         self.val_dataloader = DataLoader(ImageLoadPipe(scan_path = paths['val_scan'],
-                                                    scan_list=os.listdir(paths['val_scan'])[0:1],
+                                                    scan_list=os.listdir(paths['val_scan']),
                                                     mask_path=paths['val_label'],
+                                                    slice_num=64,
                                                     if_transform=False,
                                                     augmentation_list=None),
                                     batch_size = 1, shuffle=True)
@@ -53,12 +56,13 @@ class TrainBuilder():
         '''
         the epoch loop, consist of training loop and validation loop
         '''
-        self.TrainManager.begin_run(self.kwargs,self.model,self.dataloader,self.tf_path)
+        self.TrainManager.begin_run(self.kwargs,self.model,self.dataloader,self.tf_path,self.device)
         for e_ind in range(self.epoch):
             self.TrainManager.begin_epoch()
             i=0
             for data in self.dataloader:
                 img, liver_mask = data
+                self.TrainManager.sum_img(img,i)
                 self.optimizer.zero_grad()
                 img = img.to(self.device, dtype = torch.float)
                 liver_mask = liver_mask.to(self.device, dtype = torch.float)
@@ -66,7 +70,6 @@ class TrainBuilder():
                 loss = self.loss_func(prediction,liver_mask)
                 loss.backward()
                 self.optimizer.step()
-
                 self.TrainManager.track_loss(loss, i)
                 i+=1
 
@@ -82,8 +85,9 @@ class TrainBuilder():
             self.TrainManager.end_validation(len(self.val_dataloader))
             self.TrainManager.save_best_model(self.model_SavePath)
             self.TrainManager.end_epoch()
+            self.model.train(True)
+            self.TrainManager.save_result_csv(self.result_savepath,'train_result')
         self.TrainManager.end_run()
-        self.TrainManager.save_result_csv(self.result_savepath,'train_result')
 
 
 
@@ -102,9 +106,9 @@ path_local = {'train_scan':'X:/dataset/recurrence/training_scan/CT',
               'tfsummary':'c:/Users/yyc13/recurrence/tfsummary',
               'result':'c:/Users/yyc13/recurrence/result',
               'model':'c:/Users/yyc13/recurrence/result'}
-params = {'device':torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+params = {'device':'cpu',#torch.device("cuda" if torch.cuda.is_available() else "cpu"),
           'lr':0.0001,
-          'epoch':2}
+          'epoch':100}
 
 
 TrainBuilder(paths = path_cluster, kwargs=params).run()

@@ -2,9 +2,9 @@ import time
 import os
 from collections import OrderedDict
 from numpy import dtype
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
-import torchvision
 from torch.utils.tensorboard import SummaryWriter
 
 class TrainManager():
@@ -33,6 +33,9 @@ class TrainManager():
         self.network = None
         self.loader = None
         self.tf_writer = None
+
+        self.saved_model_num = 0
+
     
     def begin_run(self,run,network,loader,tfsummary_path,device):
         '''
@@ -53,9 +56,8 @@ class TrainManager():
         img,label = next(iter(self.loader))
         img = img.to(device, dtype = torch.float)
         label = label.to(device,dtype = torch.float)
-        grid = torchvision.utils.make_grid([img[0,0,:,:,int(img.shape[-1]/2)],
-                                            label[0,0,:,:,int(img.shape[-1]/2)]])
-        self.tf_writer.add_image('img_check',grid)
+        self.tf_writer.add_image('img_check',img[0,0,:,:,int(img.shape[-1]/2)],dataformats='HW')
+        self.tf_writer.add_image('label_check',label[0,0,:,:,int(img.shape[-1]/2)],dataformats='HW')
         self.tf_writer.add_graph(self.network,img)
 
     def end_run(self):
@@ -137,7 +139,7 @@ class TrainManager():
         self.val_running_loss = self.val_running_loss/val_dataNum
         self.val_loss.append(val_results["loss"])
         self.val_data.append(val_results)
-        self.tf_writer.add_scalar('epoch{}_validation_loss:'.format(self.epoch_count),
+        self.tf_writer.add_scalar('epoch_validation_loss:',
                                     self.val_running_loss,self.epoch_count)
         
     def save_result_csv(self, save_path, fileName):
@@ -156,11 +158,24 @@ class TrainManager():
         The model will be saved if the validation loss is the smallest among all epochs
         '''
         if self.val_running_loss < min(self.val_loss):
-            torch.save(self.model.state_dict(),save_path)
+            torch.save(self.model.state_dict(),
+                        os.path.join(save_path,'best_performed_model'))
+        if self.epoch_count%10==0:
+            os.mkdir(os.path.join(save_path,'epoch_{}'.format(self.epoch_count)))
+            torch.save(self.model.state_dict(),
+                        os.path.join(save_path,'epoch_{}'.format(self.epoch_count)))
+        
+
 
     def load_saved_model(self,load_path):
         model = torch.load(load_path)
         model.eval()
+
+    def sum_img(self,img,i):
+        if i==0:
+            self.tf_writer.add_image('img_train',
+            img[0,0,:,:,int(img.shape[-1]/2)],dataformats='HW',
+            global_step=self.epoch_count)
 
 
 
