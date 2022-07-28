@@ -1,8 +1,6 @@
 import time
 import os
 from collections import OrderedDict
-from numpy import dtype
-import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -76,6 +74,7 @@ class TrainManager():
         self.epoch_start_time = time.time()
         self.epoch_count+=1
         self.epoch_loss = 0
+        # print('epoch_',self.epoch_count)
     
     def end_epoch(self):
         '''
@@ -85,36 +84,24 @@ class TrainManager():
         run_duration = time.time()-self.run_start_time
 
         loss = self.epoch_loss/len(self.loader)
-        # accuracy = self.epoch_num_correct / len(self.loader)
         self.tf_writer.add_scalar('epoch_loss', loss, self.epoch_count)
-        # self.tf_writer.add_scalar('epoch_acc', accuracy, self.epoch_count)
         if self.epoch_count%5==0:
             for name, param in self.network.named_parameters():
                 self.tf_writer.add_histogram(name, param, self.epoch_count)
                 self.tf_writer.add_histogram(f'{name}.grad',param.grad,self.epoch_count)
         results = OrderedDict()
         # results["run"] = self.run_count
-        results["epoch"] = self.epoch_count
+        results["epoch_ind"] = self.epoch_count
         results["loss"] = loss
         # results["accuracy"] = accuracy
         results["epoch_duration"] = epoch_duration
         results["run_duration"] = run_duration
         for key in self.run_params: results[key] = self.run_params[key]
         self.run_data.append(results)
-        # df = pd.DataFrame.from_dict(self.run_data,orient='columns')
 
     def track_loss(self,loss,step):
         self.epoch_loss+=loss.item()
         self.tf_writer.add_scalar('step_loss', loss.item(), step+(self.epoch_count-1)*len(self.loader))
-
-    def track_num_correct(self, prediction, label):
-        self.epoch_num_correct+=self.get_num_correct(prediction, label)
-
-    def _get_num_correct(self, prediction, labels):
-        '''
-        only used for classification tasks
-        '''
-        return prediction.argmax(dim=1).eq(labels).sum().item()
 
     def begin_validation(self):
         '''
@@ -131,9 +118,8 @@ class TrainManager():
         Execute at the end of validation;
         '''
         val_results = OrderedDict()
-        val_results["epoch"] = self.epoch_count
+        val_results["epoch_ind"] = self.epoch_count
         val_results["loss"] = self.val_running_loss/val_dataNum
-        # val_results["accuracy"] = accuracy
         val_results["epoch_duration"] = time.time()-self.val_start_time
         #print('time for validation: ', val_results['epoch_duration'], ';',val_results['loss'])
         self.val_running_loss = self.val_running_loss/val_dataNum
@@ -150,30 +136,28 @@ class TrainManager():
             self.run_data, orient='columns'
         ).to_csv(os.path.join(save_path,f'{fileName}.csv'))
         pd.DataFrame.from_dict(
-            self.run_data, orient='columns'
+            self.val_data, orient='columns'
         ).to_csv(os.path.join(save_path,'val_{}.csv'.format(fileName)))
 
-    def save_best_model(self, save_path):
+    def save_best_model(self, model,save_path):
         '''
         The model will be saved if the validation loss is the smallest among all epochs
         '''
-        if self.val_running_loss < min(self.val_loss):
-            torch.save(self.model.state_dict(),
-                        os.path.join(save_path,'best_performed_model'))
-        if self.epoch_count%10==0:
-            os.mkdir(os.path.join(save_path,'epoch_{}'.format(self.epoch_count)))
-            torch.save(self.model.state_dict(),
-                        os.path.join(save_path,'epoch_{}'.format(self.epoch_count)))
-        
-
+        if self.epoch_count>2 and self.val_running_loss < min(self.val_loss[:-1]):
+            torch.save(model.state_dict(),os.path.join(save_path,
+                                                        'epoch_{}.pt'.format(self.epoch_count)))
+        # if self.epoch_count%10==0:
+        #     os.mkdir(os.path.join(save_path,'epoch_{}'.format(self.epoch_count)))
+        #     torch.save(model.state_dict(),
+        #                 os.path.join(save_path,'epoch_{}'.format(self.epoch_count)))
 
     def load_saved_model(self,load_path):
         model = torch.load(load_path)
         model.eval()
 
-    def sum_img(self,img,i):
+    def sum_img(self,img,i,name):
         if i==0:
-            self.tf_writer.add_image('img_train',
+            self.tf_writer.add_image(name,
             img[0,0,:,:,int(img.shape[-1]/2)],dataformats='HW',
             global_step=self.epoch_count)
 
